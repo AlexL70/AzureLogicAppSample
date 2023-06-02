@@ -1,0 +1,247 @@
+{
+    "definition": {
+        "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+        "actions": {
+            "Initialize_variable-orderSubTotal": {
+                "type": "InitializeVariable",
+                "inputs": {
+                    "variables": [
+                        {
+                            "name": "orderSubTotal",
+                            "type": "float",
+                            "value": 0
+                        }
+                    ]
+                },
+                "runAfter": {}
+            },
+            "Initialize_variable-orderTotal": {
+                "type": "InitializeVariable",
+                "inputs": {
+                    "variables": [
+                        {
+                            "name": "orderTotal",
+                            "type": "float",
+                            "value": 0
+                        }
+                    ]
+                },
+                "runAfter": {
+                    "Initialize_variable-orderSubTotal": [
+                        "SUCCEEDED"
+                    ]
+                }
+            },
+            "Initialize_variable-discount": {
+                "type": "InitializeVariable",
+                "inputs": {
+                    "variables": [
+                        {
+                            "name": "discount",
+                            "type": "float",
+                            "value": 0.1
+                        }
+                    ]
+                },
+                "runAfter": {
+                    "Initialize_variable-orderTotal": [
+                        "SUCCEEDED"
+                    ]
+                }
+            },
+            "Initialize_variable-savings": {
+                "type": "InitializeVariable",
+                "inputs": {
+                    "variables": [
+                        {
+                            "name": "savings",
+                            "type": "float",
+                            "value": 0
+                        }
+                    ]
+                },
+                "runAfter": {
+                    "Initialize_variable-discount": [
+                        "SUCCEEDED"
+                    ]
+                }
+            },
+            "Scope-Try": {
+                "type": "Scope",
+                "actions": {
+                    "For_each": {
+                        "type": "Foreach",
+                        "foreach": "@triggerBody()?['items']",
+                        "actions": {
+                            "Increment_variable": {
+                                "type": "IncrementVariable",
+                                "inputs": {
+                                    "name": "orderSubTotal",
+                                    "value": "@float(item()['cost'])"
+                                }
+                            }
+                        }
+                    },
+                    "Condition": {
+                        "type": "If",
+                        "expression": {
+                            "and": [
+                                {
+                                    "greater": [
+                                        "@variables('orderSubTotal')",
+                                        500
+                                    ]
+                                }
+                            ]
+                        },
+                        "actions": {
+                            "Set_savings": {
+                                "type": "SetVariable",
+                                "inputs": {
+                                    "name": "savings",
+                                    "value": "@mul(variables('orderSubTotal'), variables('discount'))"
+                                }
+                            },
+                            "Set_total_with_discount": {
+                                "type": "SetVariable",
+                                "inputs": {
+                                    "name": "orderTotal",
+                                    "value": "@sub(variables('orderSubTotal'), variables('savings'))"
+                                },
+                                "runAfter": {
+                                    "Set_savings": [
+                                        "SUCCEEDED"
+                                    ]
+                                }
+                            }
+                        },
+                        "else": {
+                            "actions": {
+                                "Set_total_without_discount": {
+                                    "type": "SetVariable",
+                                    "inputs": {
+                                        "name": "orderTotal",
+                                        "value": "@variables('orderSubTotal')"
+                                    }
+                                }
+                            }
+                        },
+                        "runAfter": {
+                            "For_each": [
+                                "SUCCEEDED"
+                            ]
+                        }
+                    },
+                    "Response": {
+                        "type": "Response",
+                        "kind": "Http",
+                        "inputs": {
+                            "statusCode": 200,
+                            "body": {
+                                "discountValue": "@variables('savings')",
+                                "orderStatus": "Order was successfully processed",
+                                "orderTotal": "@variables('orderTotal')"
+                            }
+                        },
+                        "runAfter": {
+                            "Condition": [
+                                "SUCCEEDED"
+                            ]
+                        }
+                    }
+                },
+                "runAfter": {
+                    "Initialize_variable-savings": [
+                        "SUCCEEDED"
+                    ]
+                }
+            },
+            "Scope-Catch": {
+                "type": "Scope",
+                "actions": {
+                    "Response-Error": {
+                        "type": "Response",
+                        "kind": "Http",
+                        "inputs": {
+                            "statusCode": 500,
+                            "body": {
+                                "code": 500,
+                                "message": "Error occured while processing order"
+                            }
+                        }
+                    }
+                },
+                "runAfter": {
+                    "Scope-Try": [
+                        "TIMEDOUT",
+                        "SKIPPED",
+                        "FAILED"
+                    ]
+                }
+            }
+        },
+        "contentVersion": "1.0.0.0",
+        "outputs": {},
+        "triggers": {
+            "When_a_HTTP_request_is_received": {
+                "type": "Request",
+                "kind": "Http",
+                "inputs": {
+                    "schema": {
+                        "type": "object",
+                        "properties": {
+                            "orderNumber": {
+                                "type": "integer"
+                            },
+                            "orderDate": {
+                                "type": "string"
+                            },
+                            "customerName": {
+                                "type": "string"
+                            },
+                            "customerId": {
+                                "type": "string"
+                            },
+                            "ShipTo": {
+                                "type": "object",
+                                "properties": {
+                                    "address": {
+                                        "type": "string"
+                                    },
+                                    "city": {
+                                        "type": "string"
+                                    },
+                                    "state": {
+                                        "type": "string"
+                                    },
+                                    "zip": {
+                                        "type": "string"
+                                    }
+                                }
+                            },
+                            "items": {
+                                "type": "array",
+                                "items": {
+                                    "type": "object",
+                                    "properties": {
+                                        "productId": {
+                                            "type": "string"
+                                        },
+                                        "cost": {
+                                            "type": "integer"
+                                        }
+                                    },
+                                    "required": [
+                                        "productId",
+                                        "cost"
+                                    ]
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    },
+    "kind": "Stateful"
+}
